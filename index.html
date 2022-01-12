@@ -17,8 +17,25 @@
             color: #888;
         }
     </style>
-    <script>
-
+    <script type="module">
+        import { init, F_Open_dialog } from './threejsModule.js'
+        console.log(init, F_Open_dialog)
+        window.init = init
+        window.F_Open_dialog = F_Open_dialog
+        document.getElementById('btn_file').addEventListener('change', () => {
+            let url = null;
+            let fileObj = document.getElementById("btn_file").files[0];
+            if (window.createObjcectURL !== undefined) {
+                url = window.createOjcectURL(fileObj);
+            } else if (window.URL !== undefined) {
+                url = window.URL.createObjectURL(fileObj);
+            } else if (window.webkitURL !== undefined) {
+                url = window.webkitURL.createObjectURL(fileObj);
+            }
+            console.log(url)
+            init(url)
+            document.getElementById('btn').style.display = 'none'
+        })
     </script>
 </head>
 <body>
@@ -27,26 +44,7 @@
     <input type="file" id="btn_file" style="display:none">
     <button id="btn" type="button" onclick="F_Open_dialog()" style="position: absolute;top:50%;left:50%;transform: translate(-50%, -50%);width: 100px; height: 50px">选择文件</button>
 </div>
-<script type="module">
-    import { init, F_Open_dialog } from './threejsModule.js'
-    console.log(init, F_Open_dialog)
-    window.init = init
-    window.F_Open_dialog = F_Open_dialog
-    document.getElementById('btn_file').addEventListener('change', () => {
-        let url = null;
-        let fileObj = document.getElementById("btn_file").files[0];
-        if (window.createObjcectURL !== undefined) {
-            url = window.createOjcectURL(fileObj);
-        } else if (window.URL !== undefined) {
-            url = window.URL.createObjectURL(fileObj);
-        } else if (window.webkitURL !== undefined) {
-            url = window.webkitURL.createObjectURL(fileObj);
-        }
-        console.log(url)
-        init(url)
-        document.getElementById('btn').style.display = 'none'
-    })
-</script>
+
 <!--<script>-->
 <!--    function F_Open_dialog()-->
 <!--    {-->

@@ -11,16 +11,6 @@ let currentBaseAction = 'idle';
 const allActions = [];
 const baseActions = {}
 const additiveActions = {
-    // "bed rise": { weight: 0 },
-    // "left up armrest": { weight: 0 },
-    // "right up armrest": { weight: 0 },
-    // "left down armrest": { weight: 0 },
-    // "right down armrest": { weight: 0 },
-    // "bedside curve": { weight: 0 },
-    // "斜前": { weight: 0 },
-    // "斜后": { weight: 0 },
-    // "加床尾": { weight: 0 },
-    // "加床头": { weight: 0 },
 };
 let panelSettings, numAnimations;
 function init(path) {
