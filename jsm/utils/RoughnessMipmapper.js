@@ -16,7 +16,7 @@ import {
 	Vector2,
 	WebGLRenderTarget,
 	FramebufferTexture
-} from '../../../build/three.module.js';
+} from '../../build/three.module.js';
 
 const _mipmapMaterial = _getMipmapMaterial();
 
