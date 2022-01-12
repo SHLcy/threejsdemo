@@ -1,4 +1,4 @@
-import * as THREE from '../build/three.module.js';
+import * as THREE from './build/three.module.js';
 import { RGBELoader } from './jsm/loaders/RGBELoader.js';
 import Stats from './jsm/libs/stats.module.js';
 import {GUI} from './jsm/libs/lil-gui.module.min.js';
