@@ -1,96 +1,81 @@
 import * as THREE from './build/three.module.js';
 import { RGBELoader } from './jsm/loaders/RGBELoader.js';
-import Stats from './jsm/libs/stats.module.js';
-import {GUI} from './jsm/libs/lil-gui.module.min.js';
 import {OrbitControls} from './jsm/controls/OrbitControls.js';
 import {GLTFLoader} from './jsm/loaders/GLTFLoader.js';
-let scene, renderer, camera, stats;
+let scene, renderer, camera;
 let model, skeleton, mixer, clock;
-const crossFadeControls = [];
-let currentBaseAction = 'idle';
-const allActions = [];
-const baseActions = {}
-const additiveActions = {
-};
-let panelSettings, numAnimations;
+let greenMaterial, yellowMaterial, redMaterial;
+let raycaster, mouse;
 function init(path) {
-
-    const container = document.getElementById('container');
     clock = new THREE.Clock();
-
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0xa0a0a0);
-    scene.fog = new THREE.Fog(0xa0a0a0, 10, 50);
-
-    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444);
-    hemiLight.position.set(0, 20, 0);
-    scene.add(hemiLight);
-
-    const dirLight = new THREE.DirectionalLight(0xffffff);
-    dirLight.position.set(3, 10, 10);
-    dirLight.castShadow = true;
-    dirLight.shadow.camera.top = 2;
-    dirLight.shadow.camera.bottom = -2;
-    dirLight.shadow.camera.left = -2;
-    dirLight.shadow.camera.right = 2;
-    dirLight.shadow.camera.near = 0.1;
-    dirLight.shadow.camera.far = 40;
-    scene.add(dirLight);
-
-    // ground
-
-    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), new THREE.MeshPhongMaterial({
-        color: 0x999999,
-        depthWrite: false
-    }));
-    mesh.rotation.x = -Math.PI / 2;
-    mesh.receiveShadow = true;
-    scene.add(mesh);
-    new RGBELoader()
-        .setPath( 'textures/equirectangular/' )
-        .load( 'venice_sunset_1k.hdr', function ( texture ) {
-            texture.mapping = THREE.EquirectangularReflectionMapping;
-            scene.environment = texture;
-            // render();
-            const loader = new GLTFLoader();
-            loader.load(path, function (gltf) {
-                model = gltf.scene;
-                var bBox = new THREE.Box3().setFromObject( model);
-                let height = bBox.max.y - bBox.min.y;
-                var dist = height / (2 * Math.tan(camera.fov * Math.PI / 360));
-                console.log("模型缩放比例",1 / dist);
-                gltf.scene.scale.set(1 / dist, 1 / dist, 1 / dist);
-                scene.add(model);
-                model.traverse(function (object) {
-                    if (object.isMesh) object.castShadow = true;
-                });
-                skeleton = new THREE.SkeletonHelper(model);
-                skeleton.visible = false;
-                scene.add(skeleton);
-                const animations = gltf.animations;
-                mixer = new THREE.AnimationMixer(model);
-                numAnimations = animations.length;
-                console.log(animations)
-                for (let i = 0; i !== numAnimations; ++i) {
-                    let clip = animations[i];
-                    const name = clip.name
-                    // Make the clip additive and remove the reference frame
-                    THREE.AnimationUtils.makeClipAdditive(clip);
-                    clip = THREE.AnimationUtils.subclip(clip, clip.name, 0, 30, 30);
-                    const action = mixer.clipAction(clip);
-                    // action.setLoop( THREE.LoopOnce )
-                    action.clampWhenFinished = true
-                    additiveActions[name] = {weight: 0}
-                    additiveActions[name].action = action;
-                    console.log(action)
-                    activateAction(action)
-                    allActions.push(action);
-                }
-                createPanel();
-                animate();
-            });
-        })
-
+    // new RGBELoader()
+    //     .setPath( 'textures/equirectangular/' )
+    //     .load( 'venice_sunset_1k.hdr', function ( texture ) {
+    //         texture.mapping = THREE.EquirectangularReflectionMapping;
+    //         scene.environment = texture;
+    //     })
+    const loader = new GLTFLoader();
+    loader.load(path, function (gltf) {
+        model = gltf.scene.children[0];
+        console.log(model)
+        setMachineMaterial(model)
+        setEmergenceLight(model)
+        const scale = 0.4
+        model.scale.set(scale,scale,scale);
+        scene.add(model);
+        setModelPosition(model)
+        setShadow(model)
+        skeleton = new THREE.SkeletonHelper(model);
+        skeleton.visible = false;
+        scene.add(skeleton);
+        mixer = new THREE.AnimationMixer(model);
+        animate();
+    });
+    // renderer
+    setRenderer()
+    // camera
+    setCamera()
+    // controls
+    setControls()
+    window.addEventListener('resize', onWindowResize);
+    window.addEventListener( 'click', onMouseClick, false );
+    setLight()
+}
+function setLight() {
+    const light = new THREE.AmbientLight( 0xffffff, 0.5 ); // soft white light
+    scene.add( light );
+    const PointLight = new THREE.PointLight( 0xffffff, 4, 100 );
+    PointLight.position.set( 0, 1, 0);
+    PointLight.castShadow = true
+    scene.add( PointLight );
+    PointLight.shadow.bias =  -0.0005
+    PointLight.shadow.mapSize.width = 1024; // default
+    PointLight.shadow.mapSize.height = 1024; // default
+    PointLight.shadow.camera.near = 0.5; // default
+    PointLight.shadow.camera.far = 1.5 // default
+}
+function setModelPosition(object) {
+    object.updateMatrixWorld();
+    const box = new THREE.Box3().setFromObject(object);
+    const center = box.getCenter(new THREE.Vector3());
+    object.position.x += object.position.x - center.x;
+    object.position.y += object.position.y - center.y;
+    object.position.z += object.position.z - center.z;
+}
+function setControls () {
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enablePan = false;
+    controls.enableZoom = true;
+    controls.update();
+}
+function setCamera () {
+    camera = new THREE.PerspectiveCamera( 60, window.innerWidth / window.innerHeight,1, 1000 );
+    camera.position.set(-5, 10, 4);
+}
+function setRenderer () {
+    const container = document.getElementById('container');
     renderer = new THREE.WebGLRenderer({antialias: true});
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -98,190 +83,75 @@ function init(path) {
     renderer.shadowMap.enabled = true;
     container.appendChild(renderer.domElement);
 
-    // camera
-    camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 100);
-    camera.position.set(-1, 2, 3);
-
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enablePan = false;
-    controls.enableZoom = false;
-    controls.target.set(0, 1, 0);
-    controls.update();
-
-    stats = new Stats();
-    container.appendChild(stats.dom);
-
-    window.addEventListener('resize', onWindowResize);
-
 }
-function createPanel() {
-
-    const panel = new GUI({width: 310});
-
-    const folder2 = panel.addFolder('Additive Action Weights');
-    const folder3 = panel.addFolder('General Speed');
-
-    panelSettings = {
-        'modify time scale': 1.0
-    };
-
-    for (const name of Object.keys(additiveActions)) {
-
-        const settings = additiveActions[name];
-
-        panelSettings[name] = settings.weight;
-        folder2.add(panelSettings, name, 0.0, 1.0, 0.01).listen().onChange(function (weight) {
-
-            setWeight(settings.action, weight);
-            settings.weight = weight;
-
-        });
-
-    }
-
-    folder3.add(panelSettings, 'modify time scale', 0.0, 1.5, 0.01).onChange(modifyTimeScale);
-    folder2.open();
-    folder3.open();
-
-    crossFadeControls.forEach(function (control) {
-
-        control.setInactive = function () {
-
-            control.domElement.classList.add('control-inactive');
-
-        };
-
-        control.setActive = function () {
-
-            control.domElement.classList.remove('control-inactive');
-
-        };
-
-        const settings = baseActions[control.property];
-
-        if (!settings || !settings.weight) {
-
-            control.setInactive();
-
-        }
-
-    });
-
-}
-function activateAction(action) {
-    console.log(action)
-    const clip = action.getClip();
-    const settings = baseActions[clip.name] || additiveActions[clip.name];
-    setWeight(action, settings.weight);
-    action.play();
-
-}
-function modifyTimeScale(speed) {
-
-    mixer.timeScale = speed;
-
-}
-function prepareCrossFade(startAction, endAction, duration) {
-
-    // If the current action is 'idle', execute the crossfade immediately;
-    // else wait until the current action has finished its current loop
-
-    if (currentBaseAction === 'idle' || !startAction || !endAction) {
-
-        executeCrossFade(startAction, endAction, duration);
-
-    } else {
-
-        synchronizeCrossFade(startAction, endAction, duration);
-
-    }
-
-    // Update control colors
-
-    if (endAction) {
-
-        const clip = endAction.getClip();
-        currentBaseAction = clip.name;
-
-    } else {
-
-        currentBaseAction = 'None';
-
-    }
-
-    crossFadeControls.forEach(function (control) {
-
-        const name = control.property;
-
-        if (name === currentBaseAction) {
-
-            control.setActive();
-
+function setShadow(model) {
+    model.traverse(function (object) {
+        if (object.name === '墙体') {
+            object.children.forEach(item => {
+                item.receiveShadow = true;
+                object.castShadow = false
+            })
         } else {
-
-            control.setInactive();
-
+            object.castShadow = true;
         }
-
     });
-
 }
-function synchronizeCrossFade(startAction, endAction, duration) {
-
-    mixer.addEventListener('loop', onLoopFinished);
-
-    function onLoopFinished(event) {
-
-        if (event.action === startAction) {
-
-            mixer.removeEventListener('loop', onLoopFinished);
-
-            _executeCrossFade(startAction, endAction, duration);
-
+function setMachineMaterial(model) {
+    greenMaterial =  model.children.filter(item => item.name === '机器3')[0].children[0].material.clone()
+    const yellowMaterialColor = model.children.filter(item => item.name === '机器2')[0].children[0].material.color
+    yellowMaterial = model.children.filter(item => item.name === '机器3')[0].children[0].material.clone()
+    yellowMaterial.color = yellowMaterialColor
+    redMaterial = model.children.filter(item => item.name === '机器1')[0].children[0].material.clone()
+    model.traverse(function (object) {
+        if (object.name.startsWith('机器')) {
+            object.children[0].material = greenMaterial
         }
-
-    }
-
+    });
 }
-function executeCrossFade(startAction, endAction, duration) {
-
-    // Not only the start action, but also the end action must get a weight of 1 before fading
-    // (concerning the start action this is already guaranteed in this place)
-
-    if (endAction) {
-
-        setWeight(endAction, 1);
-        endAction.time = 0;
-
-        if (startAction) {
-
-            // Crossfade with warping
-
-            startAction.crossFadeTo(endAction, duration, true);
-
+function onMouseClick(event) {
+    event.preventDefault();
+    raycaster = new THREE.Raycaster()
+    mouse = new THREE.Vector2()
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+    //console.log("x: " + mouse.x + ", y: " + mouse.y);
+    raycaster.setFromCamera(mouse, camera)
+    let intersects = raycaster.intersectObjects(scene.children);
+    console.log(intersects)
+    const obj = intersects[0].object
+    if (obj.parent.name.startsWith('机器')) {
+        if (obj.material === redMaterial) {
+            obj.material = yellowMaterial
+        } else if (obj.material === yellowMaterial) {
+            obj.material = greenMaterial
         } else {
-
-            // Fade in
-
-            endAction.fadeIn(duration);
-
+            obj.material = redMaterial
         }
-
-    } else {
-
-        // Fade out
-
-        startAction.fadeOut(duration);
-
     }
 
 }
-function setWeight(action, weight) {
-
-    action.enabled = true;
-    action.setEffectiveTimeScale(1);
-    action.setEffectiveWeight(weight);
-
+function setEmergenceLight(model) {
+    console.log(model)
+    const lights = model.children.filter(item => item.name === "三色灯1")[0].children
+    const materialGreen = lights[1].material.clone()
+    const materialYellow = lights[2].material.clone()
+    const materialRed = lights[3].material.clone()
+    setInterval(() => {
+        if (lights[1].material.emissive.g === 0) {
+            materialGreen.emissive = new THREE.Color( 0,255, 0 );
+            lights[1].material = materialGreen
+        } else {
+            materialGreen.emissive = new THREE.Color( 0,0, 0 );
+            lights[1].material = materialGreen
+        }
+        // if (lights[4].material.emissive.r === 0) {
+        //     materialRed.emissive = new THREE.Color( 255,0, 0 );
+        //     lights[4].material = materialRed
+        // } else {
+        //     materialRed.emissive = new THREE.Color( 0,0, 0 );
+        //     lights[4].material = materialRed
+        // }
+    },500)
 }
 function onWindowResize() {
 
@@ -292,36 +162,14 @@ function onWindowResize() {
 
 }
 function animate() {
-
     // Render loop
-
     requestAnimationFrame(animate);
-    for (let i = 0; i !== numAnimations; ++i) {
-        const action = allActions[i];
-        if (action) {
-            const clip = action.getClip();
-            const settings = baseActions[clip.name] || additiveActions[clip.name];
-            settings.weight = action.getEffectiveWeight();
-        }
-
-
-    }
-
     // Get the time elapsed since the last frame, used for mixer update
-
     const mixerUpdateDelta = clock.getDelta();
-
-    // Update the animation mixer, the stats panel, and render this frame
-
     mixer.update(mixerUpdateDelta);
-
-    stats.update();
-
     renderer.render(scene, camera);
-
 }
-function F_Open_dialog()
-{
+function F_Open_dialog() {
     document.getElementById("btn_file").click();
     console.log(window.init)
 }

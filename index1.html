@@ -3,82 +3,122 @@
 <head>
     <title>three.js webgl - GLTFloader</title>
     <meta charset="utf-8">
+    <script src="./paho.js" type="text/javascript"></script>
     <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
     <style>
         html, body {
             margin: 0;
             padding: 0;
         }
+        .cameraBox {
+            cursor: pointer;
+            height: 110px;
+            display: inline-block;
+        }
+        .bedBox {
+            position: absolute;
+            width: 200px;
+            height: 110px;
+            border-radius: 4px;
+            margin-top: 7px;
+            background-color: #fff;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            text-align: center;
+        }
     </style>
 </head>
-
 <body>
-
+<div class="bedBox cameraBox" style="display: none">
+    <div style="    height: 80px;
+    background-color: #efefef;"></div>
+    <div style="    height: 30px;
+    line-height: 30px;
+    background-color: #fff;">摄像头401-1</div>
+</div>
 <script type="module">
-
     import * as THREE from './build/three.module.js';
     import { OrbitControls } from './jsm/controls/OrbitControls.js';
     import { GLTFLoader } from './jsm/loaders/GLTFLoader.js';
+    import Stats from './jsm/libs/stats.module.js';
     import { RGBELoader } from './jsm/loaders/RGBELoader.js';
-    import { RoughnessMipmapper } from './jsm/utils/RoughnessMipmapper.js';
-    let camera, scene, renderer, raycaster;
+    import {GUI} from './jsm/libs/lil-gui.module.min.js';
+    import Mqtt from './mqtt.js'
+    let scene, renderer, camera, stats, scene2, raycaster;
+    let model, skeleton, mixer, clock;
+    const crossFadeControls = [];
+    const allActions = [];
+    const baseActions = {}
+    let leftRectLight = '';
+    let rightRectLight = '';
+    let restroomRectLight = '';
+    let corridorRectLight= []
+    const additiveActions = {
+    };
+    let panelSettings, numAnimations;
     let mouse = {}
-
     init();
     render();
-
     function init() {
+        clock = new THREE.Clock();
         const container = document.createElement( 'div' );
+        stats = new Stats();
+        container.appendChild(stats.dom);
         document.body.appendChild( container );
         camera = new THREE.PerspectiveCamera( 50, window.innerWidth / window.innerHeight,1, 1000 );
         camera.position.set(40, 100, 0);
         scene = new THREE.Scene();
+        scene2 = new THREE.Scene()
         new RGBELoader()
             .setPath( 'textures/equirectangular/' )
             .load( 'venice_sunset_1k.hdr', function ( texture ) {
                 texture.mapping = THREE.EquirectangularReflectionMapping;
                 scene.environment = texture;
-                render();
-                const roughnessMipmapper = new RoughnessMipmapper( renderer );
+                scene2.environment = texture;
                 const loader = new GLTFLoader()
-                loader.load( '病房.gltf', function ( gltf ) {
-                    gltf.scene.position.x = 10;
+                loader.load( '窗帘.gltf', function ( gltf ) {
+                    model = gltf.scene;
+                    console.log(model)
+                    gltf.scene.position.x = 0;
                     gltf.scene.position.z = 20;
-
                     gltf.scene.scale.set(4, 4, 4)
-                    gltf.scene.traverse( function ( child ) {
-                        if ( child.isMesh ) {
-                            roughnessMipmapper.generateMipmaps( child.material );
-                        }
-                    } );
+                    gltf.scene.children[3].children = gltf.scene.children[3].children.filter(item => item.name !== "Mesh_332001")
                     scene.add( gltf.scene );
-                    roughnessMipmapper.dispose();
+                    skeleton = new THREE.SkeletonHelper(model);
+                    skeleton.visible = false;
+                    scene.add(skeleton);
+                    const animations =   gltf.animations;
+                    console.log(animations)
+                    mixer = new THREE.AnimationMixer(model);
+                    numAnimations = animations.length;
+                    for (let i = 0; i !== numAnimations; ++i) {
+                        let clip = animations[i];
+                        const name = clip.name
+                        THREE.AnimationUtils.makeClipAdditive(clip);
+                        clip = THREE.AnimationUtils.subclip(clip, clip.name, 0, 60, 60);
+                        const action = mixer.clipAction(clip);
+                        action.setLoop( THREE.LoopOnce )
+                        action.clampWhenFinished = true
+                        additiveActions[name] = {weight: 0}
+                        additiveActions[name].action = action;
+                        activateAction(action)
+                        allActions.push(action);
+                    }
+                    createPanel();
+                    animate();
+                } );
+                loader.load( '窗帘.gltf', function ( gltf ) {
+                    gltf.scene = gltf.scene.children[3]
+                    gltf.scene.position.x = 0;
+                    gltf.scene.position.z = 20;
+                    gltf.scene.scale.set(4, 4, 4)
+                    gltf.scene.children =  gltf.scene.children.filter(item =>  item.name === "Mesh_332001")
+                    console.log(gltf.scene.children)
+                    scene2.add( gltf.scene );
                     render();
                 } );
             } );
-        // new RGBELoader()
-        //     .setPath( 'textures/equirectangular/' )
-        //     .load( 'venice_sunset_1k.hdr', function ( texture ) {
-        //         texture.mapping = THREE.EquirectangularReflectionMapping;
-        //         scene.environment = texture;
-        //         render();
-        //         const roughnessMipmapper = new RoughnessMipmapper( renderer );
-        //         const loader = new GLTFLoader()
-        //         loader.load( '医院模型99.gltf', function ( gltf ) {
-        //             gltf.scene.position.x = 0;
-        //             gltf.scene.position.z = 30;
-        //             gltf.scene.position.y = 30;
-        //             gltf.scene.scale.set(1, 1, 1)
-        //             gltf.scene.traverse( function ( child ) {
-        //                 if ( child.isMesh ) {
-        //                     roughnessMipmapper.generateMipmaps( child.material );
-        //                 }
-        //             } );
-        //             scene.add( gltf.scene );
-        //             roughnessMipmapper.dispose();
-        //             render();
-        //         } );
-        //     } );
         renderer = new THREE.WebGLRenderer( { antialias: true } );
         renderer.setPixelRatio( window.devicePixelRatio );
         renderer.setSize( window.innerWidth, window.innerHeight );
@@ -94,8 +134,14 @@
         controls.update();
         window.addEventListener( 'resize', onWindowResize );
         window.addEventListener( 'click', onMouseClick, false );
+        connectMqtt()
     }
-
+    function guid() {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,(c) => {
+            const r = Math.random()*16|0, v = c ==='x'? r : (r&0x3|0x8);
+            return v.toString(16);
+        });
+    }
     function onWindowResize() {
         camera.aspect = window.innerWidth / window.innerHeight;
         camera.updateProjectionMatrix();
@@ -110,20 +156,29 @@
         mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
         //console.log("x: " + mouse.x + ", y: " + mouse.y);
         raycaster.setFromCamera(mouse, camera)
-        var intersects = raycaster.intersectObjects(scene.children.filter(item => item.type === 'Group')[0].children[0].children);
+        let intersects = raycaster.intersectObjects(scene2.children);
         if (intersects.length > 0) {
-
-            if (intersects[0].object.name === "3DGeom~45_Defintion_1") {
-                const rectLight3 = new THREE.RectAreaLight( 0xffffff, 1, 18, 25);
+            console.log(intersects[0], '1');
+            const rectLight3 = new THREE.RectAreaLight( 0xffffff, 300, 1, 1);
+            rectLight3.position.set( 6 ,11, -27 );
+            rectLight3.lookAt( 0,-400,-25 );
+            scene2.add( rectLight3 );
+            render()
+            setTimeout(() => {
+                scene2.remove(rectLight3)
+                render()
+            }, 1000)
+        } else {
+            console.log("not touched2");
+        }
+        intersects = raycaster.intersectObjects(scene.children);
+        if (intersects.length > 0) {
+            if (intersects[0].object.name === "3DGeom~45_Defintion001") {
+                const rectLight3 = new THREE.RectAreaLight( 0xffffff, 8, 3, 20);
                 // rectLight3.position.set( 10,0,0 );
-                rectLight3.position.set( 28 , 11, 10 );
-                rectLight3.lookAt( 0, -800, 10 );
-
+                rectLight3.position.set( 10 , 14, 9);
+                rectLight3.lookAt( 0, -90, -9 );
                 scene.add( rectLight3 );
-                const rectLightMesh = new THREE.Mesh( new THREE.PlaneBufferGeometry(), new THREE.MeshBasicMaterial( {color:'#ffffff', side: THREE.BackSide } ) );
-                rectLightMesh.scale.x = rectLight3.width;
-                rectLightMesh.scale.y = rectLight3.height;
-                rectLight3.add( rectLightMesh );
                 render()
                 setTimeout(() => {
                     scene.remove(rectLight3)
@@ -131,64 +186,40 @@
                 }, 1000)
             }
             if (intersects[0].object.name === "3DGeom~45_Defintion") {
-                const rectLight3 = new THREE.RectAreaLight( 0xffffff, 2, 8, 25);
-                rectLight3.position.set( 28 ,11, -9 );
-                rectLight3.lookAt( 0, -800, -7 );
-
+                const rectLight3 = new THREE.RectAreaLight( 0xffffff, 10, 1, 20);
+                rectLight3.position.set( 10 ,14, -7 );
+                rectLight3.lookAt( 0, -90, -9 );
                 scene.add( rectLight3 );
-                const rectLightMesh = new THREE.Mesh( new THREE.PlaneBufferGeometry(), new THREE.MeshBasicMaterial( {color:'#fff', side: THREE.BackSide } ) );
-                rectLightMesh.scale.x = rectLight3.width;
-                rectLightMesh.scale.y = rectLight3.height;
-                rectLight3.add( rectLightMesh );
                 render()
                 setTimeout(() => {
                     scene.remove(rectLight3)
                     render()
                 }, 1000)
             }
-            if (intersects[0].object.name === "mesh_333") {
-                const rectLight3 = new THREE.RectAreaLight( 0xffffff, 200, 1, 1);
-                rectLight3.position.set( 20 ,10, -30 );
-                rectLight3.lookAt( 0, -800 -30 );
-                scene.add( rectLight3 );
-                const rectLightMesh = new THREE.Mesh( new THREE.PlaneBufferGeometry(), new THREE.MeshBasicMaterial( {color:'#000', side: THREE.BackSide } ) );
-                rectLightMesh.scale.x = rectLight3.width;
-                rectLightMesh.scale.y = rectLight3.height;
-                rectLight3.add( rectLightMesh );
-                render()
-                setTimeout(() => {
-                    scene.remove(rectLight3)
-                    render()
-                }, 1000)
-            }
-            if (intersects[0].object.name === "mesh_333_10") {
+            if (intersects[0].object.name === "Mesh_333_8") {
                 const width = 3
                 const height = 3
                 const intensity = 2
+                const x = 18
                 let rectLight1 = new THREE.RectAreaLight( 0xffffff, intensity, width, height);
-                rectLight1.position.set( 32 ,3, -9 );
+                rectLight1.position.set( x ,3, -9 );
                 rectLight1.lookAt( 0, -800, -7 );
-
                 scene.add( rectLight1 );
                 let rectLight2 = new THREE.RectAreaLight( 0xffffff, intensity, width, height);
-                rectLight2.position.set( 32 ,3, 0 );
+                rectLight2.position.set( x ,3, 0 );
                 rectLight2.lookAt( 0, -800, -7 );
-
                 scene.add( rectLight2 );
                 let rectLight3 = new THREE.RectAreaLight( 0xffffff, intensity, width, height);
-                rectLight3.position.set( 32 ,3, -18 );
+                rectLight3.position.set( x ,3, -18 );
                 rectLight3.lookAt( 0, -800, -7 );
-
                 scene.add( rectLight3 );
                 let rectLight4 = new THREE.RectAreaLight( 0xffffff, intensity, width, height);
-                rectLight4.position.set( 32 ,3, 9 );
+                rectLight4.position.set( x ,3, 9 );
                 rectLight4.lookAt( 0, -800, -7 );
-
                 scene.add( rectLight4 );
                 let rectLight5 = new THREE.RectAreaLight( 0xffffff, intensity, width, height);
-                rectLight5.position.set( 32 ,3, -27 );
+                rectLight5.position.set( x ,3, -27 );
                 rectLight5.lookAt( 0, -800, -7 );
-
                 scene.add( rectLight5 );
                 render()
                 setTimeout(() => {
@@ -205,26 +236,272 @@
                 //     render()
                 // }, 2000)
             }
-
-            // if ()
-            // const color = intersects[0].object.material.color
-            // intersects[0].object.material.color =  new THREE.Color(0xff3333);
+            if (intersects[0].object.name === "摄像头") {
+                const box =  document.getElementsByClassName('bedBox')[0]
+                box.style.top = event.clientY + 'px'
+                box.style.left = event.clientX + 'px'
+                box.style.display = 'flex'
+            }
             console.log(intersects[0]);
-            // intersects[0].object.position.y  = 5
-            // setTimeout(() => {
-            //     intersects[0].object.material.color = color
-            //     render()
-            // }, 2000)
-
             render()
         } else {
-            console.log("not touched");
+            console.log("not touched1");
         }
     }
     function render() {
-        renderer.render( scene, camera );
-    }
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap; // default THREE.PCFShadowMap
 
+        renderer.render( scene, camera );
+        renderer.autoClear = false;
+        renderer.render( scene2, camera );
+    }
+    function createPanel() {
+
+        const panel = new GUI({width: 310});
+
+        const folder2 = panel.addFolder('Additive Action Weights');
+        const folder3 = panel.addFolder('General Speed');
+
+        panelSettings = {
+            'modify time scale': 1.0
+        };
+
+        for (const name of Object.keys(additiveActions)) {
+
+            const settings = additiveActions[name];
+
+            panelSettings[name] = settings.weight;
+            folder2.add(panelSettings, name, 0.0, 1.0, 0.01).listen().onChange(function (weight) {
+
+                setWeight(settings.action, weight);
+                settings.weight = weight;
+
+            });
+
+        }
+
+        folder3.add(panelSettings, 'modify time scale', 0.0, 1.5, 0.01).onChange(modifyTimeScale);
+        folder2.open();
+        folder3.open();
+
+        crossFadeControls.forEach(function (control) {
+
+            control.setInactive = function () {
+
+                control.domElement.classList.add('control-inactive');
+
+            };
+
+            control.setActive = function () {
+
+                control.domElement.classList.remove('control-inactive');
+
+            };
+
+            const settings = baseActions[control.property];
+
+            if (!settings || !settings.weight) {
+
+                control.setInactive();
+
+            }
+
+        });
+
+    }
+    function activateAction(action) {
+        const clip = action.getClip();
+        const settings = baseActions[clip.name] || additiveActions[clip.name];
+        setWeight(action, settings.weight);
+        action.play();
+
+    }
+    function modifyTimeScale(speed) {
+
+        mixer.timeScale = speed;
+
+    }
+    const animationTimeGap = 10
+    const timer = {
+        name: []
+    }
+    function setWeight( action, weight ) {
+        action.enabled = true;
+        const name = action._clip.name
+        if(weight !== action.weight) {
+            if (name.endsWith("立方体Action")) {
+                const step = 0.02
+                const gap = Math.abs(weight - action.weight)
+                const animationTimes = Math.ceil(gap / step)
+                if (weight > action.weight) {
+                    for (let i = 0; i <= animationTimes; i++) {
+                        const time = setTimeout(() => {
+                            let actionWeight = parseFloat(( Number(action.weight)  +  Number(step) ).toFixed(2))
+                            actionWeight = actionWeight > 1 ? 1 : actionWeight
+                            actionWeight = actionWeight < 0 ? 0 : actionWeight
+                            action.setEffectiveTimeScale( 1 );
+                            action.setEffectiveWeight( actionWeight );
+                        }, i*animationTimeGap)
+                        timer.name.push(time)
+                    }
+                } else if (weight < action.weight) {
+                    for (let i = 0; i <= animationTimes; i++) {
+                        const time = setTimeout(() => {
+                            let actionWeight =  parseFloat(( Number(action.weight) - Number(step)).toFixed(2))
+                            actionWeight = actionWeight > 1 ? 1 : actionWeight
+                            actionWeight = actionWeight < 0 ? 0 : actionWeight
+                            action.setEffectiveTimeScale( 1 );
+                            action.setEffectiveWeight( actionWeight );
+                        }, i*animationTimeGap)
+                        timer.name.push(time)
+                    }
+                }
+            } else {
+                action.setEffectiveTimeScale( 1 );
+                action.setEffectiveWeight( weight );
+            }
+        }
+
+    }
+    function animate() {
+        // Render loop
+        requestAnimationFrame(animate);
+        for (let i = 0; i !== numAnimations; ++i) {
+            const action = allActions[i];
+            if (action) {
+                const clip = action.getClip();
+                const settings = baseActions[clip.name] || additiveActions[clip.name];
+                settings.weight = action.getEffectiveWeight();
+            }
+        }
+        // Get the time elapsed since the last frame, used for mixer update
+        const mixerUpdateDelta = clock.getDelta();
+        mixer.update(mixerUpdateDelta);
+        stats.update();
+        renderer.render(scene, camera);
+        renderer.render(scene2, camera);
+
+    }
+    function connectMqtt() {
+        const mqttOptions = {
+            host: '192.168.53.209',
+            port: 11884,
+            useSSL: false,
+            path: '/',
+            clientId: 'reserved?nonce=456&timestamp=1625845512921',
+            username: '2eiqA27osEW8EDnDuiqAe8',
+            password: 'de5dc3536274581e64e178e1365d92d39978d4c81225f29df76f4a48f831cb5f',
+            subscription: [
+                `/sys/aoZvAxQmz4/aoZvAxQmz5/thing/property/post`,
+            ]
+        }
+        const mqtt = new Mqtt(mqttOptions, (message) => {
+            console.log(message)
+            const data = JSON.parse(message.payloadString).properties
+            console.log(data)
+            if (data.power_left === 1) {
+                scene.remove(leftRectLight)
+                leftRectLight = new THREE.RectAreaLight( 0xffffff, 5*data.brightness_left / 100, 3, 20);
+                leftRectLight.position.set( 10 , 14, 9);
+                leftRectLight.lookAt( 0, -90, -9 );
+                scene.add( leftRectLight );
+                render()
+            } else if (data.power_left === 0) {
+               if (leftRectLight) {
+                   scene.remove(leftRectLight)
+                   leftRectLight = ''
+               }
+            }
+            if (data.power_right === 1) {
+                scene.remove(rightRectLight)
+                rightRectLight = new THREE.RectAreaLight( 0xffffff, 15*data.brightness_right / 100, 1, 20);
+                rightRectLight.position.set( 10 ,14, -7 );
+                rightRectLight.lookAt( 0, -90, -9 );
+                scene.add( rightRectLight );
+            } else if (data.power_right === 0)  {
+                if (rightRectLight) {
+                    scene.remove(rightRectLight)
+                    rightRectLight = ''
+                }
+            }
+            if (data.power_corridor === 1) {
+                corridorRectLight.forEach(item => {
+                    scene.remove(item)
+                })
+                corridorRectLight = []
+                const width = 3
+                const height = 3
+                const intensity = 2
+                const x = 18
+                let rectLight1 = new THREE.RectAreaLight( 0xffffff, intensity, width, height);
+                rectLight1.position.set( x ,3, -9 );
+                rectLight1.lookAt( 0, -800, -7 );
+                scene.add( rectLight1 );
+                corridorRectLight.push(rectLight1)
+                let rectLight2 = new THREE.RectAreaLight( 0xffffff, intensity, width, height);
+                rectLight2.position.set( x ,3, 0 );
+                rectLight2.lookAt( 0, -800, -7 );
+                scene.add( rectLight2 );
+                corridorRectLight.push(rectLight2)
+
+                let rectLight3 = new THREE.RectAreaLight( 0xffffff, intensity, width, height);
+                rectLight3.position.set( x ,3, -18 );
+                rectLight3.lookAt( 0, -800, -7 );
+                scene.add( rectLight3 );
+                corridorRectLight.push(rectLight3)
+
+                let rectLight4 = new THREE.RectAreaLight( 0xffffff, intensity, width, height);
+                rectLight4.position.set( x ,3, 9 );
+                rectLight4.lookAt( 0, -800, -7 );
+                scene.add( rectLight4 );
+                corridorRectLight.push(rectLight4)
+
+                let rectLight5 = new THREE.RectAreaLight( 0xffffff, intensity, width, height);
+                rectLight5.position.set( x ,3, -27 );
+                rectLight5.lookAt( 0, -800, -7 );
+                scene.add( rectLight5 );
+                corridorRectLight.push(rectLight5)
+
+            } else if (data.power_corridor === 0)  {
+                if (corridorRectLight.length > 0) {
+                    corridorRectLight.forEach(item => {
+                        scene.remove(item)
+                    })
+                    corridorRectLight = []
+                }
+            }
+            if (data.power_restroom === 1) {
+                scene2.remove(restroomRectLight)
+                restroomRectLight = new THREE.RectAreaLight( 0xffffff, 300*data.brightness_restroom / 100, 1, 1);
+                restroomRectLight.position.set( 6 ,11, -27 );
+                restroomRectLight.lookAt( 0,-400,-25 );
+                scene2.add( restroomRectLight );
+            } else if (data.power_restroom === 0) {
+                if (restroomRectLight) {
+                    scene2.remove(restroomRectLight)
+                    restroomRectLight = ''
+                }
+            }
+            if (data.lowest_left === 1) {
+                console.log( scene)
+                // const bed1 = scene.children[0].children[3].children.filter(item => item.name === 'Mesh_330001')[0]
+                console.log(bed1)
+                bed1.material.color = '0xffffff'
+            }
+            if (data.I_type_curtain === 1) {
+                console.log(additiveActions)
+                setWeight(additiveActions["立方体Action"].action, 1);
+            }
+            if (data.I_type_curtain === 0) {
+                console.log(additiveActions)
+                setWeight(additiveActions["立方体Action"].action, 0);
+            }
+            render()
+
+        })
+        mqtt.connectMqtt()
+    }
 </script>
 
 </body>
