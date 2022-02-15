@@ -2,10 +2,15 @@ import * as THREE from './build/three.module.js';
 import { RGBELoader } from './jsm/loaders/RGBELoader.js';
 import {OrbitControls} from './jsm/controls/OrbitControls.js';
 import {GLTFLoader} from './jsm/loaders/GLTFLoader.js';
+import {
+    CSS3DRenderer,
+    CSS3DObject,
+} from "./jsm/CSS3DRenderer.js";
 let scene, renderer, camera;
 let model, skeleton, mixer, clock;
 let greenMaterial, yellowMaterial, redMaterial;
 let raycaster, mouse;
+let render3D;
 function init(path) {
     clock = new THREE.Clock();
     scene = new THREE.Scene();
@@ -25,6 +30,7 @@ function init(path) {
         const scale = 0.4
         model.scale.set(scale,scale,scale);
         scene.add(model);
+        model.updateMatrixWorld(true)
         setModelPosition(model)
         setShadow(model)
         skeleton = new THREE.SkeletonHelper(model);
@@ -33,28 +39,62 @@ function init(path) {
         mixer = new THREE.AnimationMixer(model);
         animate();
     });
+
     // renderer
     setRenderer()
     // camera
     setCamera()
     // controls
     setControls()
+    // light
+    setLight()
     window.addEventListener('resize', onWindowResize);
     window.addEventListener( 'click', onMouseClick, false );
-    setLight()
+}
+function createdCSS3DLabel() {
+    //增加一个CSS3D对象
+    let element = document.createElement("div");
+    element.className = "css3dcontain";
+    element.style.opacity = 0.75;
+    let lableTitle = document.createElement("div");
+    lableTitle.className = "css3dTitle";
+    //   lableTitle.style.opacity = 0.75;
+    lableTitle.textContent = "数据详情";
+    element.appendChild(lableTitle);
+
+    let lableItem = document.createElement("div");
+    lableItem.className = "css3dItem";
+    lableItem.style.opacity = 0.75;
+    let lableLeft = document.createElement("div");
+    lableLeft.className = "css3dLeft";
+    lableLeft.textContent = "产量";
+    //   lableLeft.style.opacity = 0.75;
+    let lableRight = document.createElement("div");
+    lableRight.className = "css3dRight";
+    //   lableRight.style.opacity = 0.75;
+    lableRight.textContent = "10/h";
+    lableItem.appendChild(lableLeft);
+    lableItem.appendChild(lableRight);
+    element.appendChild(lableItem);
+
+    return element;
 }
 function setLight() {
     const light = new THREE.AmbientLight( 0xffffff, 0.5 ); // soft white light
     scene.add( light );
-    const PointLight = new THREE.PointLight( 0xffffff, 4, 100 );
-    PointLight.position.set( 0, 1, 0);
-    PointLight.castShadow = true
-    scene.add( PointLight );
-    PointLight.shadow.bias =  -0.0005
-    PointLight.shadow.mapSize.width = 1024; // default
-    PointLight.shadow.mapSize.height = 1024; // default
-    PointLight.shadow.camera.near = 0.5; // default
-    PointLight.shadow.camera.far = 1.5 // default
+    const PointLightUp = new THREE.PointLight( 0xffffff, 2, 100 );
+    PointLightUp.position.set(0, 4, -2);
+    PointLightUp.castShadow = true
+    PointLightUp.shadow.bias =  -0.0005
+    PointLightUp.shadow.mapSize.width = 1024; // default
+    PointLightUp.shadow.mapSize.height = 1024; // default
+    PointLightUp.shadow.camera.near = 0.5; // default
+    PointLightUp.shadow.camera.far = 1.5 // default
+    scene.add( PointLightUp );
+    const PointLightDown = PointLightUp.clone()
+    PointLightDown.position.set(0, 4, 2)
+    scene.add( PointLightDown );
+
 }
 function setModelPosition(object) {
     object.updateMatrixWorld();
@@ -69,13 +109,19 @@ function setControls () {
     controls.enablePan = false;
     controls.enableZoom = true;
     controls.update();
+    const controls2 = new OrbitControls(camera, render3D.domElement);
+    controls2.enablePan = false;
+    controls2.enableZoom = true;
+    controls2.update();
 }
 function setCamera () {
     camera = new THREE.PerspectiveCamera( 60, window.innerWidth / window.innerHeight,1, 1000 );
-    camera.position.set(-5, 10, 4);
+    camera.position.set(0,6,12);
 }
 function setRenderer () {
     const container = document.getElementById('container');
+
+    // model renderer
     renderer = new THREE.WebGLRenderer({antialias: true});
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -83,6 +129,14 @@ function setRenderer () {
     renderer.shadowMap.enabled = true;
     container.appendChild(renderer.domElement);
 
+    // css renderer
+    render3D = new CSS3DRenderer();
+    render3D.setSize(
+        window.innerWidth, window.innerHeight
+    );
+    render3D.domElement.style.position = "absolute";
+    render3D.domElement.style.top = '0';
+    container.appendChild(render3D.domElement);
 }
 function setShadow(model) {
     model.traverse(function (object) {
@@ -114,7 +168,6 @@ function onMouseClick(event) {
     mouse = new THREE.Vector2()
     mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-    //console.log("x: " + mouse.x + ", y: " + mouse.y);
     raycaster.setFromCamera(mouse, camera)
     let intersects = raycaster.intersectObjects(scene.children);
     console.log(intersects)
@@ -127,8 +180,42 @@ function onMouseClick(event) {
         } else {
             obj.material = redMaterial
         }
-    }
+        // get world position
 
+        const position = getWorldPosition(obj)
+        // create css
+        const element = createdCSS3DLabel();
+        let css3DObject = new CSS3DObject(element);
+        if (position.x > 2) {
+            css3DObject.position.x = position.x - 2.05
+        } else if (position.x > 1.5) {
+            css3DObject.position.x = position.x - 1.05
+        } else if (position.x < -2 ) {
+            css3DObject.position.x = position.x + 0.96
+        } else {
+            css3DObject.position.x = position.x - 0.05
+        }
+        console.log( css3DObject.position.x)
+        // css3DObject.position.x = position.x > 1.6 ? position.x - 2 : position.x
+        css3DObject.position.y = position.y + 0.2
+        css3DObject.position.z = position.z > 2.8 ? position.z - 1.5 : position.z + 0.9
+        setModelPosition(css3DObject)
+        const scale = 0.01
+        css3DObject.scale.set(scale, scale, scale)
+        // model.children.push(css3DObject)
+        scene.add(css3DObject);
+        console.log(model)
+    }
+}
+function getWorldPosition(obj) {
+    obj.geometry.computeBoundingBox();
+    const boundingBox = obj.geometry.boundingBox;
+    const position = new THREE.Vector3();
+    position.subVectors( boundingBox.max, boundingBox.min );
+    position.multiplyScalar( 1);
+    position.add( boundingBox.min );
+    position.applyMatrix4( obj.matrixWorld );
+    return position
 }
 function setEmergenceLight(model) {
     console.log(model)
@@ -168,10 +255,6 @@ function animate() {
     const mixerUpdateDelta = clock.getDelta();
     mixer.update(mixerUpdateDelta);
     renderer.render(scene, camera);
+    render3D.render(scene, camera);
 }
-function F_Open_dialog() {
-    document.getElementById("btn_file").click();
-    console.log(window.init)
-}
-
-export {init, F_Open_dialog}
+export {init}
