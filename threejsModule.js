@@ -2,6 +2,8 @@ import * as THREE from './build/three.module.js';
 import { RGBELoader } from './jsm/loaders/RGBELoader.js';
 import {OrbitControls} from './jsm/controls/OrbitControls.js';
 import {GLTFLoader} from './jsm/loaders/GLTFLoader.js';
+import Mqtt from './mqtt.js'
+
 import {
     CSS3DRenderer,
     CSS3DObject,
@@ -11,6 +13,9 @@ let model, skeleton, mixer, clock;
 let greenMaterial, yellowMaterial, redMaterial;
 let raycaster, mouse;
 let render3D;
+let materialGreen, materialYellow, materialRed, emissiveMaterialGreen, emissiveMaterialYellow, emissiveMaterialRed;
+let timer = {}
+let cssObject = {}
 function init(path) {
     clock = new THREE.Clock();
     scene = new THREE.Scene();
@@ -49,7 +54,8 @@ function init(path) {
     // light
     setLight()
     window.addEventListener('resize', onWindowResize);
-    window.addEventListener( 'click', onMouseClick, false );
+    // window.addEventListener( 'click', onMouseClick, false );
+    connectMqtt()
 }
 function createdCSS3DLabel() {
     //增加一个CSS3D对象
@@ -162,51 +168,50 @@ function setMachineMaterial(model) {
         }
     });
 }
-function onMouseClick(event) {
-    event.preventDefault();
-    raycaster = new THREE.Raycaster()
-    mouse = new THREE.Vector2()
-    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-    raycaster.setFromCamera(mouse, camera)
-    let intersects = raycaster.intersectObjects(scene.children);
-    console.log(intersects)
-    const obj = intersects[0].object
-    if (obj.parent.name.startsWith('机器')) {
-        if (obj.material === redMaterial) {
-            obj.material = yellowMaterial
-        } else if (obj.material === yellowMaterial) {
-            obj.material = greenMaterial
-        } else {
-            obj.material = redMaterial
-        }
-        // get world position
-
-        const position = getWorldPosition(obj)
-        // create css
-        const element = createdCSS3DLabel();
-        let css3DObject = new CSS3DObject(element);
-        if (position.x > 2) {
-            css3DObject.position.x = position.x - 2.05
-        } else if (position.x > 1.5) {
-            css3DObject.position.x = position.x - 1.05
-        } else if (position.x < -2 ) {
-            css3DObject.position.x = position.x + 0.96
-        } else {
-            css3DObject.position.x = position.x - 0.05
-        }
-        console.log( css3DObject.position.x)
-        // css3DObject.position.x = position.x > 1.6 ? position.x - 2 : position.x
-        css3DObject.position.y = position.y + 0.2
-        css3DObject.position.z = position.z > 2.8 ? position.z - 1.5 : position.z + 0.9
-        setModelPosition(css3DObject)
-        const scale = 0.01
-        css3DObject.scale.set(scale, scale, scale)
-        // model.children.push(css3DObject)
-        scene.add(css3DObject);
-        console.log(model)
-    }
-}
+// function onMouseClick(event) {
+//     event.preventDefault();
+//     raycaster = new THREE.Raycaster()
+//     mouse = new THREE.Vector2()
+//     mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+//     mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+//     raycaster.setFromCamera(mouse, camera)
+//     let intersects = raycaster.intersectObjects(scene.children);
+//     console.log(intersects)
+//     const obj = intersects[0].object
+//     if (obj.parent.name.startsWith('机器')) {
+//         if (obj.material === redMaterial) {
+//             obj.material = yellowMaterial
+//         } else if (obj.material === yellowMaterial) {
+//             obj.material = greenMaterial
+//         } else {
+//             obj.material = redMaterial
+//         }
+//         // get world position
+//
+//         const position = getWorldPosition(obj)
+//         // create css
+//         const element = createdCSS3DLabel();
+//         let css3DObject = new CSS3DObject(element);
+//         if (position.x > 2) {
+//             css3DObject.position.x = position.x - 2.05
+//         } else if (position.x > 1.5) {
+//             css3DObject.position.x = position.x - 1.05
+//         } else if (position.x < -2 ) {
+//             css3DObject.position.x = position.x + 0.96
+//         } else {
+//             css3DObject.position.x = position.x - 0.05
+//         }
+//         console.log( css3DObject.position.x)
+//         // css3DObject.position.x = position.x > 1.6 ? position.x - 2 : position.x
+//         css3DObject.position.y = position.y + 0.2
+//         css3DObject.position.z = position.z > 2.8 ? position.z - 1.5 : position.z + 0.9
+//         setModelPosition(css3DObject)
+//         const scale = 0.01
+//         css3DObject.scale.set(scale, scale, scale)
+//         // model.children.push(css3DObject)
+//         scene.add(css3DObject);
+//     }
+// }
 function getWorldPosition(obj) {
     obj.geometry.computeBoundingBox();
     const boundingBox = obj.geometry.boundingBox;
@@ -220,25 +225,28 @@ function getWorldPosition(obj) {
 function setEmergenceLight(model) {
     console.log(model)
     const lights = model.children.filter(item => item.name === "三色灯1")[0].children
-    const materialGreen = lights[1].material.clone()
-    const materialYellow = lights[2].material.clone()
-    const materialRed = lights[3].material.clone()
-    setInterval(() => {
-        if (lights[1].material.emissive.g === 0) {
-            materialGreen.emissive = new THREE.Color( 0,255, 0 );
-            lights[1].material = materialGreen
-        } else {
-            materialGreen.emissive = new THREE.Color( 0,0, 0 );
-            lights[1].material = materialGreen
-        }
-        // if (lights[4].material.emissive.r === 0) {
-        //     materialRed.emissive = new THREE.Color( 255,0, 0 );
-        //     lights[4].material = materialRed
-        // } else {
-        //     materialRed.emissive = new THREE.Color( 0,0, 0 );
-        //     lights[4].material = materialRed
-        // }
-    },500)
+    materialGreen = lights[1].material.clone()
+    materialYellow = lights[2].material.clone()
+    materialRed = lights[4].material.clone()
+    emissiveMaterialGreen = lights[1].material.clone()
+    emissiveMaterialYellow =  lights[2].material.clone()
+    emissiveMaterialRed =  lights[4].material.clone()
+    emissiveMaterialGreen.emissive = new THREE.Color( 0,255, 0 );
+    emissiveMaterialYellow.emissive = new THREE.Color( 225,0, 0 );
+    emissiveMaterialRed.emissive = new THREE.Color( 255,0, 0 );
+    for(let i = 1; i < 9; i++){
+        const device =  model.children.filter(item => item.name === "三色灯" + i)[0]
+        device.children[1].material = emissiveMaterialGreen
+        device.children[2].material = materialYellow
+        device.children[4].material = materialRed
+        timer[device+i] = setInterval(() => {
+            if(  device.children[1].material === materialGreen) {
+                device.children[1].material = emissiveMaterialGreen
+            } else {
+                device.children[1].material = materialGreen
+            }
+        }, 500)
+    }
 }
 function onWindowResize() {
 
@@ -257,4 +265,107 @@ function animate() {
     renderer.render(scene, camera);
     render3D.render(scene, camera);
 }
+function connectMqtt() {
+    const mqttOptions = {
+        // host: '192.168.53.209',
+        // port: 11884,
+        // useSSL: false,
+        // path: '/',
+        // clientId: 'reserved?nonce=456&timestamp=1625845512921',
+        // username: 'wHsdx3IOHL77zlK2UYmn',
+        // password: 'de5dc3536274581e64e178e1365d92d39978d4c81225f29df76f4a48f831cb5f',
+        // subscription: [
+        //     `/sys/aoZvAxQmzg/aoZvAxQmzh/thing/property/post`,
+        // ]
+        host: '192.168.53.209',
+        port: 11884,
+        useSSL: false,
+        path: '/',
+        clientId: 'reserved?nonce=456&timestamp=1625845512921',
+        username: '2eiqA27osEW8EDnDuiqAe8',
+        password: 'de5dc3536274581e64e178e1365d92d39978d4c81225f29df76f4a48f831cb5f',
+        subscription: [
+            `/sys/aoZvAxQmzg/aoZvAxQmzh/thing/property/post`,
+        ]
+    }
+    const mqtt = new Mqtt(mqttOptions, (message) => {
+        const data = JSON.parse(message.payloadString).properties
+        console.log(data)
+        const deviceLight =  model.children.filter(item => item.name === "三色灯" + data.id)[0]
+        const device =  model.children.filter(item => item.name === "机器" + data.id)[0].children[0]
+        if(timer[deviceLight+data.id]) {
+            clearInterval(timer[deviceLight+data.id])
+            timer[deviceLight+data.id] = ''
+        }
+        if(cssObject[device+data.id]) {
+            scene.remove(cssObject[device+data.id])
+            cssObject[device+data.id] = ''
+        }
+        switch (data.status) {
+            case 0:
+                device.material = greenMaterial
+                deviceLight.children[1].material = emissiveMaterialGreen
+                deviceLight.children[2].material = materialYellow
+                deviceLight.children[4].material = materialRed
+                timer[deviceLight+data.id] = setInterval(() => {
+                    if(  deviceLight.children[1].material === materialGreen) {
+                        deviceLight.children[1].material = emissiveMaterialGreen
+                    } else {
+                        deviceLight.children[1].material = materialGreen
+                    }
+                }, 500)
+                break
+            case 1:
+                device.material = redMaterial
+                deviceLight.children[1].material = materialGreen
+                deviceLight.children[2].material = materialYellow
+                deviceLight.children[4].material = emissiveMaterialRed
+                timer[deviceLight+data.id] = setInterval(() => {
+                    if(  deviceLight.children[4].material === materialRed) {
+                        deviceLight.children[4].material = emissiveMaterialRed
+                    } else {
+                        deviceLight.children[4].material = materialRed
+                    }
+                }, 500)
+                const position = getWorldPosition(device)
+                // create css
+                const element = createdCSS3DLabel();
+                let css3DObject = new CSS3DObject(element);
+                if (position.x > 2) {
+                    css3DObject.position.x = position.x - 2.05
+                } else if (position.x > 1.5) {
+                    css3DObject.position.x = position.x - 1.05
+                } else if (position.x < -2 ) {
+                    css3DObject.position.x = position.x + 0.96
+                } else {
+                    css3DObject.position.x = position.x - 0.05
+                }
+                console.log( css3DObject.position.x)
+                css3DObject.position.y = position.y + 0.2
+                css3DObject.position.z = position.z > 2.8 ? position.z - 1.5 : position.z + 0.9
+                setModelPosition(css3DObject)
+                const scale = 0.01
+                css3DObject.scale.set(scale, scale, scale)
+                scene.add(css3DObject);
+                cssObject[device+data.id] = css3DObject
+                break
+            case 2:
+                device.material = yellowMaterial
+                deviceLight.children[1].material = materialGreen
+                deviceLight.children[2].material = emissiveMaterialYellow
+                deviceLight.children[4].material = materialRed
+                timer[deviceLight+data.id] = setInterval(() => {
+                    if(  deviceLight.children[2].material === materialYellow) {
+                        deviceLight.children[2].material = emissiveMaterialYellow
+                    } else {
+                        deviceLight.children[2].material = materialYellow
+                    }
+                }, 500)
+
+                break
+        }
+    })
+    mqtt.connectMqtt()
+}
+
 export {init}
