@@ -277,10 +277,10 @@ function connectMqtt() {
         // subscription: [
         //     `/sys/aoZvAxQmzg/aoZvAxQmzh/thing/property/post`,
         // ]
-        host: '192.168.53.209',
-        port: 11884,
-        useSSL: false,
-        path: '/',
+        host: 'larkea.staging.pivaiot.com',
+        port: 443,
+        useSSL: true,
+        path: '/mqtt',
         clientId: 'reserved?nonce=456&timestamp=1625845512921',
         username: '2eiqA27osEW8EDnDuiqAe8',
         password: 'de5dc3536274581e64e178e1365d92d39978d4c81225f29df76f4a48f831cb5f',
